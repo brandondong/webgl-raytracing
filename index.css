@@ -1,0 +1,8 @@
+canvas {
+  display: block;
+  margin: auto;
+}
+
+canvas + div {
+  margin-top: 20px;
+}
