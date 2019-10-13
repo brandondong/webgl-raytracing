@@ -3,6 +3,10 @@ canvas {
   margin: auto;
 }
 
+canvas:active {
+  cursor: grabbing;
+}
+
 canvas + div {
   margin-top: 20px;
 }
