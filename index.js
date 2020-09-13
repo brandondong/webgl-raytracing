@@ -10,22 +10,29 @@ const SCREEN_SQUARE_VERTICES = [
   1, -1
 ];
 
+// Variable for the screen filling (x,y) vertices.
+const COORDINATES_VAR = 'coordinates';
+// Variable for the viewport dimensions.
+const VIEWPORT_VAR = 'viewport';
+
 // Place the canvas-filling square at z = 0.
 const VERTEX_SOURCE = `
-attribute vec2 coordinates;
+precision highp float;
+attribute vec2 ${COORDINATES_VAR};
 
 void main(void) {
-  gl_Position = vec4(coordinates, 0, 1);
+  gl_Position = vec4(${COORDINATES_VAR}, 0, 1);
 }
 `;
 
 const FRAGMENT_SOURCE = `
-uniform highp vec2 viewport;
+precision highp float;
+uniform vec2 ${VIEWPORT_VAR};
 
 void main(void) {
-  gl_FragColor = vec4(gl_FragCoord.x / viewport.x, 0, gl_FragCoord.y / viewport.y, 1);
-  if (gl_FragCoord.x < viewport.y / 2.0 && gl_FragCoord.y < viewport.y / 2.0) {
-    gl_FragColor = vec4(gl_FragCoord.x / viewport.x, 0, gl_FragCoord.y / viewport.y, 0.5);
+  gl_FragColor = vec4(gl_FragCoord.x / ${VIEWPORT_VAR}.x, 0, gl_FragCoord.y / ${VIEWPORT_VAR}.y, 1);
+  if (gl_FragCoord.x < ${VIEWPORT_VAR}.y / 2.0 && gl_FragCoord.y < ${VIEWPORT_VAR}.y / 2.0) {
+    gl_FragColor = vec4(gl_FragCoord.x / ${VIEWPORT_VAR}.x, 0, gl_FragCoord.y / ${VIEWPORT_VAR}.y, 0.5);
   }
 }
 `;
@@ -39,33 +46,25 @@ const CANVAS_SIZE_OPTIONS = {
 const DEFAULT_SIZE = '480p';
 
 function main() {
-  const canvas = document.getElementById('glCanvas');
-  const gl = canvas.getContext('webgl');
+  const { canvas, gl, viewportSizeVar } = setupWebGL();
 
   // Only continue if WebGL is available and working.
-  if (gl === null) {
+  if (!gl) {
     alert('Unable to initialize WebGL. Your browser or machine may not support it.');
     return;
   }
 
-  const vertShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SOURCE);
-  const fragShader = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE);
-  const shaderProgram = createProgram(gl, vertShader, fragShader);
-
-  bindVertices(gl, shaderProgram, 'coordinates');
-  bindInitialSizeAndUpdate(gl, canvas, shaderProgram, 'viewport');
-
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  addSizeListener(gl, canvas, viewportSizeVar);
 
   const camera = new Camera();
   document.addEventListener('keypress', function (e) {
-    if (e.keyCode === 119) { // w.
+    if (e.key === 'w') {
       camera.moveForwards();
-    } else if (e.keyCode === 115) { // s.
+    } else if (e.key === 's') {
       camera.moveBackwards();
-    } else if (e.keyCode === 100) { // d.
+    } else if (e.key === 'd') {
       camera.moveRight();
-    } else if (e.keyCode == 97) { //a.
+    } else if (e.key === 'a') {
       camera.moveLeft();
     }
   });
@@ -78,16 +77,35 @@ function main() {
   window.addEventListener('mouseup', function () {
     camera.mouseup();
   });
-
-  logCompileStatus(gl, vertShader);
-  logCompileStatus(gl, fragShader);
 }
 
-function bindInitialSizeAndUpdate(gl, canvas, shaderProgram, variableName) {
-  const viewportSizeVar = gl.getUniformLocation(shaderProgram, variableName);
+function setupWebGL() {
+  const canvas = document.getElementById('glCanvas');
+  const gl = canvas.getContext('webgl');
+  if (gl === null) {
+    return {};
+  }
+  const vertShader = createShader(gl, gl.VERTEX_SHADER, VERTEX_SOURCE);
+  const fragShader = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE);
+  if (!logCompileStatus(gl, vertShader) || !logCompileStatus(gl, fragShader)) {
+    return {};
+  }
+  const shaderProgram = createProgram(gl, vertShader, fragShader);
+  bindVertices(gl, shaderProgram);
+  const viewportSizeVar = bindInitialSize(gl, shaderProgram);
+  render(gl);
+  return { canvas, gl, viewportSizeVar };
+}
+
+function render(gl) {
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+}
+
+function bindInitialSize(gl, shaderProgram) {
+  const viewportSizeVar = gl.getUniformLocation(shaderProgram, VIEWPORT_VAR);
   const size = CANVAS_SIZE_OPTIONS[DEFAULT_SIZE];
   gl.uniform2f(viewportSizeVar, size.x, size.y);
-  addSizeListener(gl, canvas, viewportSizeVar);
+  return viewportSizeVar;
 }
 
 function addSizeListener(gl, canvas, viewportSizeVar) {
@@ -98,7 +116,7 @@ function addSizeListener(gl, canvas, viewportSizeVar) {
     canvas.height = newSize.y;
     gl.uniform2f(viewportSizeVar, newSize.x, newSize.y);
     gl.viewport(0, 0, newSize.x, newSize.y);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    render(gl);
   });
 }
 
@@ -118,23 +136,23 @@ function createProgram(gl, vertShader, fragShader) {
   return shaderProgram;
 }
 
-function bindVertices(gl, shaderProgram, variableName) {
+function bindVertices(gl, shaderProgram) {
   const vertex_buffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(SCREEN_SQUARE_VERTICES), gl.STATIC_DRAW);
 
-  const coordinates = gl.getAttribLocation(shaderProgram, variableName);
+  const coordinates = gl.getAttribLocation(shaderProgram, COORDINATES_VAR);
   gl.vertexAttribPointer(coordinates, 2, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(coordinates);
 }
 
 function logCompileStatus(gl, shader) {
-  const compiled = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
-  console.log('Shader compiled successfully: ' + compiled);
   const compilationLog = gl.getShaderInfoLog(shader);
   if (compilationLog) {
     console.log('Shader compiler log: ' + compilationLog);
   }
+  const compiled = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+  return compiled;
 }
 
 window.addEventListener('DOMContentLoaded', main);
